@@ -6,7 +6,7 @@ import plotly.express as px
 
 st.title("📊 Exploratory Data Analysis (EDA)")
 
-df = pd.read_csv("dataset.csv")
+df = pd.read_csv("Algerian_forest_fires_dataset.csv")
 
 st.subheader("Dataset Preview")
 st.dataframe(df.head())

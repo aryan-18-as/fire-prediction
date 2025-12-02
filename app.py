@@ -15,7 +15,7 @@ Predict the likelihood of a **forest fire** based on environmental and meteorolo
 conditions using a **Machine Learning model** trained on the Algerian Forest Fire Dataset.
 """)
 
-MODEL_PATH = "forest_fire_best_pipeline.pkl"
+MODEL_PATH = "forest_fire_best_pipeline_streamlit.pkl"
 
 @st.cache_resource
 def load_model():

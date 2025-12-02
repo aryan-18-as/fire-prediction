@@ -19,12 +19,13 @@ This dashboard helps in:
 Navigate using the sidebar to explore pages.
 """)
 
-st.image("https://i.imgur.com/QkQJtCE.jpg", use_column_width=True)
+st.image("https://images.unsplash.com/photo-1501785888041-af3ef285b470")
+
 
 st.markdown("---")
 st.subheader("📌 Dataset Summary")
 
-df = pd.read_csv("Algerian_foresr_fires_dataset.csv")
+df = pd.read_csv("Algerian_forest_fires_dataset.csv")
 col1, col2, col3 = st.columns(3)
 
 col1.metric("Total Samples", len(df))

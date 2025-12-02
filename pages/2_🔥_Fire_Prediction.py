@@ -1,89 +1,106 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
 import onnxruntime as ort
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide")
-
 st.title("🔥 Forest Fire Risk Prediction")
 
-# ---------------------------------------------------
-# Load dataset
-# ---------------------------------------------------
-df = pd.read_csv("Algerian_forest_fires_dataset.csv")
-df.columns = df.columns.str.lower().str.strip()
-
-# Auto-detect possible target column (optional)
-possible_targets = ["classes", "class", "fire", "label", "target"]
-target_col = next((col for col in df.columns if col in possible_targets), None)
-
-# Clean non-numeric columns & force numeric
-for col in df.columns:
-    df[col] = pd.to_numeric(df[col], errors="ignore")
-
-numeric_df = df.select_dtypes(include='number')
+st.markdown("""
+Adjust the environmental parameters below and click **Predict**  
+to estimate whether there is a **risk of forest fire**.
+""")
 
 # ---------------------------------------------------
 # Load ONNX models (Scaler + Classifier)
 # ---------------------------------------------------
-scaler = ort.InferenceSession("fire_scaler.onnx")
-classifier = ort.InferenceSession("fire_classifier.onnx")
+@st.cache_resource
+def load_sessions():
+    scaler_sess = ort.InferenceSession("fire_scaler.onnx")
+    clf_sess = ort.InferenceSession("fire_classifier.onnx")
+    return scaler_sess, clf_sess
+
+scaler_session, clf_session = load_sessions()
 
 # ---------------------------------------------------
-# Feature Names
+# Feature Names (order MUST match training)
 # ---------------------------------------------------
 feature_names = [
-    "day", "month", "year", "temperature", "rh",
-    "ws", "rain", "ffmc", "dmc", "dc", "isi", "bui", "fwi"
+    "day", "month", "year",
+    "temperature", "rh", "ws", "rain",
+    "ffmc", "dmc", "dc", "isi", "bui", "fwi"
 ]
 
 # ---------------------------------------------------
-# UI Form for Inputs
+# Hard-coded safe ranges for each feature
+# (No dependency on dataset → no slider errors)
+# ---------------------------------------------------
+ranges = {
+    "day":          (1, 31, 15),
+    "month":        (1, 12, 6),
+    "year":         (2012, 2030, 2012),
+    "temperature":  (0.0, 50.0, 30.0),
+    "rh":           (0.0, 100.0, 50.0),
+    "ws":           (0.0, 40.0, 10.0),
+    "rain":         (0.0, 20.0, 0.0),
+    "ffmc":         (0.0, 100.0, 80.0),
+    "dmc":          (0.0, 300.0, 50.0),
+    "dc":           (0.0, 1000.0, 200.0),
+    "isi":          (0.0, 50.0, 10.0),
+    "bui":          (0.0, 200.0, 40.0),
+    "fwi":          (0.0, 50.0, 15.0),
+}
+
+# ---------------------------------------------------
+# UI – Sliders for all inputs
 # ---------------------------------------------------
 st.subheader("🧪 Enter Environmental Parameters")
 
-user_inputs = []
 cols = st.columns(3)
+user_values = []
 
 for i, feat in enumerate(feature_names):
+    min_v, max_v, default_v = ranges[feat]
+
+    # Decide if feature is int or float
+    is_int = isinstance(min_v, int) and isinstance(max_v, int)
+
     with cols[i % 3]:
-
-        if feat in numeric_df.columns:
-            min_val = float(numeric_df[feat].min())
-            max_val = float(numeric_df[feat].max())
-            default_val = float(numeric_df[feat].mean())
+        if is_int:
+            val = st.slider(
+                label=feat.upper(),
+                min_value=int(min_v),
+                max_value=int(max_v),
+                value=int(default_v),
+                step=1
+            )
         else:
-            min_val, max_val, default_val = 0, 100, 50
-        
-        value = st.slider(
-            label=feat.upper(),
-            min_value=min_val,
-            max_value=max_val,
-            value=default_val,
-            step=0.1
-        )
-        user_inputs.append(value)
+            val = st.slider(
+                label=feat.upper(),
+                min_value=float(min_v),
+                max_value=float(max_v),
+                value=float(default_v),
+                step=0.1
+            )
+        user_values.append(val)
 
-# Convert to array
-input_array = np.array([user_inputs], dtype=np.float32)
+# Convert to numpy array for ONNX
+input_array = np.array([user_values], dtype=np.float32)
 
-# ---------------------------------------------------
-# Prediction Button
-# ---------------------------------------------------
 st.markdown("---")
 
+# ---------------------------------------------------
+# Prediction
+# ---------------------------------------------------
 if st.button("🚀 Predict Fire Risk", use_container_width=True):
+    # Scale input
+    scaled = scaler_session.run(None, {"input": input_array})[0]
 
-    # Scale input using ONNX scaler
-    scaled = scaler.run(None, {"input": input_array})[0]
+    # Predict
+    logits = clf_session.run(None, {"input": scaled})[0]
+    predicted_class = int(np.argmax(logits))
+    probability = float(np.max(logits))  # max prob
 
-    # Predict using ONNX classifier
-    pred = classifier.run(None, {"input": scaled})[0]
-    predicted_class = int(np.argmax(pred))
-    probability = float(np.max(pred))  # best prediction prob
-
-    # Gauge Chart
+    # Gauge for probability
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=probability * 100,
@@ -94,14 +111,13 @@ if st.button("🚀 Predict Fire Risk", use_container_width=True):
             'steps': [
                 {'range': [0, 40], 'color': "green"},
                 {'range': [40, 70], 'color': "yellow"},
-                {'range': [70, 100], 'color': "red"}
+                {'range': [70, 100], 'color': "red"},
             ],
         }
     ))
-
     st.plotly_chart(fig, use_container_width=True)
 
-    # Final Classification
+    # Text verdict
     if predicted_class == 1:
         st.error(f"🔥 **High Fire Risk Detected!** (Probability: {probability:.2%})")
     else:

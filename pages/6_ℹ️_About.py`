@@ -1,0 +1,20 @@
+import streamlit as st
+
+st.title("ℹ️ About This Project")
+
+st.markdown("""
+### 🔥 Forest Fire Prediction Using Machine Learning  
+This system predicts fire risk based on 13 environmental parameters.
+
+### 👨‍💻 Developed By
+**Aryan Sharma**
+
+### 🧑‍🏫 Guided By
+**Your Faculty Name**
+
+### 📅 Year
+2025
+
+### 📧 Contact
+your.email@example.com
+""")

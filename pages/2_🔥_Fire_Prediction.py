@@ -1,39 +1,93 @@
 import streamlit as st
 import numpy as np
-import onnxruntime as ort
 import pandas as pd
+import onnxruntime as ort
+import plotly.graph_objects as go
 
-st.title("🔥 Forest Fire Prediction")
+st.set_page_config(layout="wide")
+st.title("🔥 Forest Fire Risk Prediction")
 
-feature_names = [
-    "day","month","year","temperature","rh","ws","rain",
-    "ffmc","dmc","dc","isi","bui","fwi"
+# Load & prepare dataset
+df = pd.read_csv("Algerian_forest_fires_dataset.csv")
+df.columns = df.columns.str.strip().str.lower()
+
+# Detect target
+possible_targets = ["classes", "class", "fire", "label", "target"]
+target_col = next((col for col in df.columns if col in possible_targets), None)
+
+df[target_col] = (
+    df[target_col]
+    .astype(str)
+    .str.lower()
+    .str.replace(" ", "")
+    .map({"fire": 1, "notfire": 0})
+)
+
+# Feature list
+features = [
+    "day", "month", "year", "temperature", "rh", "ws", "rain",
+    "ffmc", "dmc", "dc", "isi", "bui", "fwi"
 ]
 
-df = pd.read_csv("Algerian_forest_fires_dataset.csv")
-min_vals = df[feature_names].min()
-max_vals = df[feature_names].max()
-
 # Load ONNX models
-scaler_session = ort.InferenceSession("fire_scaler.onnx")
-clf_session = ort.InferenceSession("fire_classifier.onnx")
+scaler = ort.InferenceSession("fire_scaler.onnx")
+classifier = ort.InferenceSession("fire_classifier.onnx")
+
+# UI Layout
+left, right = st.columns([2, 1])
 
 inputs = []
-cols = st.columns(3)
 
-for idx, feat in enumerate(feature_names):
-    with cols[idx % 3]:
-        val = st.number_input(feat, float(min_vals[feat]), float(max_vals[feat]), float(df[feat].mean()))
+with left:
+    st.subheader("🧪 Enter Environmental Parameters")
+
+    for feat in features:
+        val = st.slider(
+            feat,
+            min_value=float(df[feat].min()),
+            max_value=float(df[feat].max()),
+            value=float(df[feat].mean()),
+            step=0.1
+        )
         inputs.append(val)
 
-if st.button("Predict Fire 🔥"):
+# Prediction
+if st.button("🔥 Predict Fire Risk", use_container_width=True):
+    
     arr = np.array([inputs], dtype=np.float32)
 
-    scaled = scaler_session.run(None, {"input": arr})[0]
-    pred = clf_session.run(None, {"input": scaled})[0]
+    # Scale Input
+    scaled = scaler.run(None, {"input": arr})[0]
+
+    # Predict
+    pred = classifier.run(None, {"input": scaled})[0]
+    probability = float(np.max(pred))
     result = int(pred.argmax())
 
-    if result == 1:
-        st.error("🔥 FIRE RISK DETECTED!")
-    else:
-        st.success("🌿 No Fire Risk Detected")
+    with right:
+        st.subheader("📊 Prediction Result")
+
+        # Gauge Chart
+        fig = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=probability * 100,
+                title={'text': "Fire Probability (%)"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "orange"},
+                    'steps': [
+                        {'range': [0, 40], 'color': "green"},
+                        {'range': [40, 70], 'color': "yellow"},
+                        {'range': [70, 100], 'color': "red"},
+                    ]
+                }
+            )
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Final Verdict
+        if result == 1:
+            st.error("🔥 **High Risk: Fire may occur**")
+        else:
+            st.success("🌿 **Low Risk: Safe conditions**")

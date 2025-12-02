@@ -10,7 +10,7 @@ feature_names = [
     "ffmc","dmc","dc","isi","bui","fwi"
 ]
 
-df = pd.read_csv("dataset.csv")
+df = pd.read_csv("Algerian_forest_fires_dataset.csv")
 min_vals = df[feature_names].min()
 max_vals = df[feature_names].max()
 

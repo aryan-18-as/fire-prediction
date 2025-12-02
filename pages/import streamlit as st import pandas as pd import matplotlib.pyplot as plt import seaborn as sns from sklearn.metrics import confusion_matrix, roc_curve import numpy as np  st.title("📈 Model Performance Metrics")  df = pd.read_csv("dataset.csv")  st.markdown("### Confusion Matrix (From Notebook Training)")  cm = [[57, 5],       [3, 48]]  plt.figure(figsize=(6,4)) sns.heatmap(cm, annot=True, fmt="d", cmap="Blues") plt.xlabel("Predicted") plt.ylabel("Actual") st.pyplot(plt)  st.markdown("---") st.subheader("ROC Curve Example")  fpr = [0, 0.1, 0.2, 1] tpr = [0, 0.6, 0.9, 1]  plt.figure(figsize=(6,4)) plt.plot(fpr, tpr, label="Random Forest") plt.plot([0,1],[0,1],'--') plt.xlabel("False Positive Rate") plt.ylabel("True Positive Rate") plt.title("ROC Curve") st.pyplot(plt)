@@ -1,0 +1,35 @@
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, roc_curve
+import numpy as np
+
+st.title("📈 Model Performance Metrics")
+
+df = pd.read_csv("dataset.csv")
+
+st.markdown("### Confusion Matrix (From Notebook Training)")
+
+cm = [[57, 5],
+      [3, 48]]
+
+plt.figure(figsize=(6,4))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+st.pyplot(plt)
+
+st.markdown("---")
+st.subheader("ROC Curve Example")
+
+fpr = [0, 0.1, 0.2, 1]
+tpr = [0, 0.6, 0.9, 1]
+
+plt.figure(figsize=(6,4))
+plt.plot(fpr, tpr, label="Random Forest")
+plt.plot([0,1],[0,1],'--')
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve")
+st.pyplot(plt)

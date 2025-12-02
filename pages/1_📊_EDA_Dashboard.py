@@ -1,105 +1,151 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
 
-st.set_page_config(layout="wide")
-
-st.title("📊 Exploratory Data Analysis (EDA)")
-
-# Load & Clean
-df = pd.read_csv("Algerian_forest_fires_dataset.csv")
-df.columns = df.columns.str.strip().str.lower()
-
-# Auto-detect target column
-possible_targets = ["classes", "class", "fire", "label", "target"]
-target_col = None
-for col in df.columns:
-    if col in possible_targets:
-        target_col = col
-        break
-
-if target_col is None:
-    st.error("❌ No class/target column found.")
-    st.stop()
-
-# Normalize fire/not fire
-df[target_col] = (
-    df[target_col]
-    .astype(str)
-    .str.lower()
-    .str.replace(" ", "")
-    .map({"fire": 1, "notfire": 0})
+# ----------------------------------------------------------
+# PAGE CONFIG
+# ----------------------------------------------------------
+st.set_page_config(
+    page_title="EDA Dashboard",
+    page_icon="📊",
+    layout="wide"
 )
 
-# -------------------------------
-# 1️⃣ Basic Stats
-# -------------------------------
-st.subheader("📌 Dataset Overview")
+# ----------------------------------------------------------
+# LOAD DATA
+# ----------------------------------------------------------
+@st.cache_data
+def load_data():
+    return pd.read_csv("Algerian_forest_fires_dataset.csv")
+
+df = load_data()
+
+st.title("📊 Exploratory Data Analysis (EDA) Dashboard")
+st.markdown("This dashboard provides a detailed exploratory analysis of the **Algerian Forest Fires dataset**.")
+
+# ----------------------------------------------------------
+# CLEANING (ensure consistent formatting)
+# ----------------------------------------------------------
+df.columns = df.columns.str.lower().str.strip()
+
+if "classes" in df.columns:
+    df["classes"] = df["classes"].astype(str).str.lower().str.strip()
+
+# ----------------------------------------------------------
+# SECTION 1 — Dataset Overview
+# ----------------------------------------------------------
+st.header("📌 Dataset Overview")
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Samples", df.shape[0])
+col2.metric("Total Features", df.shape[1])
+col3.metric("Fire Cases", df["classes"].str.contains("fire").sum())
+
 st.dataframe(df.head(), use_container_width=True)
 
-# -------------------------------
-# 2️⃣ Class Distribution
-# -------------------------------
+st.markdown("---")
+
+# ----------------------------------------------------------
+# SECTION 2 — Class Distribution
+# ----------------------------------------------------------
 st.subheader("🔥 Class Distribution")
 
-fire_count = df[target_col].sum()
-nofire_count = len(df) - fire_count
+if df["classes"].dtype == "object":
+    class_counts = df["classes"].value_counts()
+else:
+    # fallback if label converted to 0/1
+    class_counts = df["classes"].map({0: "not fire", 1: "fire"}).value_counts()
 
-pie_fig = px.pie(
-    names=["Fire", "No Fire"], 
-    values=[fire_count, nofire_count],
-    color=["Fire", "No Fire"],
-    color_discrete_map={"Fire": "red", "No Fire": "green"},
-    hole=0.35,
-    title="Fire vs No Fire Percentage"
+fig = px.pie(
+    values=class_counts.values,
+    names=class_counts.index,
+    title="Fire vs. No Fire Distribution",
+    hole=0.4,
 )
+st.plotly_chart(fig, use_container_width=True)
 
-st.plotly_chart(pie_fig, use_container_width=True)
+st.markdown("---")
 
-# -------------------------------
-# 3️⃣ Correlation Heatmap
-# -------------------------------
+# ----------------------------------------------------------
+# SECTION 3 — Numerical Summary
+# ----------------------------------------------------------
+st.subheader("📎 Statistical Summary (Numerical Columns Only)")
+
+num_df = df.select_dtypes(include=['number'])
+
+if num_df.empty:
+    st.warning("⚠ No numeric columns found.")
+else:
+    st.dataframe(num_df.describe(), use_container_width=True)
+
+st.markdown("---")
+
+# ----------------------------------------------------------
+# SECTION 4 — Correlation Heatmap
+# ----------------------------------------------------------
 st.subheader("📌 Correlation Heatmap")
 
-plt.figure(figsize=(12, 6))
-sns.heatmap(df.corr(), cmap="coolwarm", annot=False)
-st.pyplot(plt)
+numeric_df = df.select_dtypes(include=['number'])
 
-# -------------------------------
-# 4️⃣ Feature Distribution
-# -------------------------------
+if numeric_df.shape[1] < 2:
+    st.warning("⚠ Not enough numeric columns to generate correlation heatmap.")
+else:
+    corr_matrix = numeric_df.corr()
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.heatmap(
+        corr_matrix,
+        cmap="coolwarm",
+        annot=True,
+        fmt=".2f",
+        linewidths=0.5,
+        cbar=True,
+        ax=ax,
+    )
+    st.pyplot(fig)
+
+st.markdown("---")
+
+# ----------------------------------------------------------
+# SECTION 5 — Feature Distributions
+# ----------------------------------------------------------
 st.subheader("📈 Feature Distributions")
 
-num_cols = df.drop(columns=[target_col]).columns
-selected = st.multiselect("Select Features:", num_cols, default=num_cols[:4])
+numeric_cols = numeric_df.columns.tolist()
 
-if selected:
-    fig = px.histogram(
-        df,
-        x=selected,
-        nbins=30,
-        marginal="box",
-        title="Feature Distribution",
-        color=target_col,
-        color_discrete_map={1: "red", 0: "green"},
+if numeric_cols:
+    selected_cols = st.multiselect(
+        "Select features to visualize:",
+        numeric_cols,
+        default=numeric_cols[:3]
     )
+
+    for col in selected_cols:
+        fig = px.histogram(df, x=col, nbins=30, title=f"Distribution of {col}")
+        st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("No numeric columns to visualize.")
+
+st.markdown("---")
+
+# ----------------------------------------------------------
+# SECTION 6 — Boxplots
+# ----------------------------------------------------------
+st.subheader("📦 Boxplots for Outlier Detection")
+
+if numeric_cols:
+    selected_box = st.selectbox("Select feature:", numeric_cols)
+
+    fig = px.box(df, y=selected_box, title=f"Boxplot for {selected_box}")
     st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("No numeric columns available.")
 
-# -------------------------------
-# 5️⃣ Scatter Matrix (small sample)
-# -------------------------------
-st.subheader("🔎 Feature Relationships — Scatter Matrix")
+st.markdown("---")
 
-sample_df = df.sample(min(200, len(df)))
-
-fig_matrix = px.scatter_matrix(
-    sample_df,
-    dimensions=num_cols[:5],
-    color=target_col,
-    color_discrete_map={1: "red", 0: "green"},
-    title="Scatter Matrix (Sampled)",
-)
-
-st.plotly_chart(fig_matrix, use_container_width=True)
+# ----------------------------------------------------------
+# END
+# ----------------------------------------------------------
+st.success("✨ EDA Dashboard Loaded Successfully!")
